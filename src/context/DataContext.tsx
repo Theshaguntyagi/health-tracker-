@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { dbService, initFirebase } from '../services/db';
 import { aiService } from '../services/ai';
-import { getMockData } from '../utils/mockData';
+
 import type { 
   UserProfile, WeightEntry, FoodEntry, WaterEntry, SleepEntry, 
   ActivityEntry, HealthRecord, AIReport, ChatMessage, AppSettings 
