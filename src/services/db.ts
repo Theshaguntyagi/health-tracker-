@@ -88,7 +88,7 @@ export function initFirebase(config: FirebaseConfig): boolean {
 }
 
 // --- DATA ACCESS LAYER ---
-const USER_ID = 'primary_user'; // Personal app uses a single primary user
+export const USER_ID = 'shagun_tyagi'; // Hardcoded user ID for Shagun's personal data isolation
 
 // Helper to get local data
 function getLocal<T>(key: string, defaultValue: T): T {

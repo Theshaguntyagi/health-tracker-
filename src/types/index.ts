@@ -121,6 +121,7 @@ export interface AppSettings {
   storageMode: 'local' | 'firebase';
   firebaseConfig: FirebaseConfig | null;
   aiMode: 'local' | 'api';
+  aiProvider: 'local' | 'openai' | 'gemini';
   openaiApiKey: string;
   geminiApiKey: string;
   cfWorkerUrl: string;

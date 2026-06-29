@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { dbService, initFirebase } from '../services/db';
 import { aiService } from '../services/ai';
+import { calculateDailyGoals } from '../utils/fitness';
 
 import type { 
   UserProfile, WeightEntry, FoodEntry, WaterEntry, SleepEntry, 
@@ -8,6 +9,7 @@ import type {
 } from '../types';
 
 interface DataContextType {
+  user: { email: string } | null;
   profile: UserProfile | null;
   weights: WeightEntry[];
   foods: FoodEntry[];
@@ -21,6 +23,8 @@ interface DataContextType {
   loading: boolean;
   activeTab: string;
   setActiveTab: (tab: string) => void;
+  signIn: (email: string, pass: string) => Promise<void>;
+  signOut: () => Promise<void>;
   updateProfile: (profile: UserProfile) => Promise<void>;
   addWeight: (entry: Omit<WeightEntry, 'id'>) => Promise<void>;
   deleteWeight: (id: string) => Promise<void>;
@@ -69,16 +73,16 @@ const DEFAULT_SETTINGS: AppSettings = {
   theme: 'dark',
   storageMode: 'firebase',
   firebaseConfig: DEFAULT_FIREBASE_CONFIG,
-  aiMode: import.meta.env.VITE_OPENAI_API_KEY ? 'api' : 'local',
+  aiMode: 'api',
+  aiProvider: 'gemini',
   openaiApiKey: import.meta.env.VITE_OPENAI_API_KEY || '',
-  geminiApiKey: '',
+  geminiApiKey: localStorage.getItem('health_tracker_gemini_api_key') || '',
   cfWorkerUrl: ''
 };
 
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [settings, setSettings] = useState<AppSettings>(() => {
     const saved = localStorage.getItem('app_settings');
-    const envOpenAiKey = import.meta.env.VITE_OPENAI_API_KEY || '';
     
     if (saved) {
       const parsed = JSON.parse(saved);
@@ -91,10 +95,17 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         changed = true;
       }
       
-      // Automatically load the environment OpenAI key if not already set
-      if (!parsed.openaiApiKey && envOpenAiKey) {
-        parsed.openaiApiKey = envOpenAiKey;
+      // Ensure Shagun's Gemini key is loaded
+      const localGeminiKey = localStorage.getItem('health_tracker_gemini_api_key');
+      if (localGeminiKey) {
+        parsed.geminiApiKey = localGeminiKey;
         parsed.aiMode = 'api';
+        changed = true;
+      }
+
+      // Ensure storageMode is firebase
+      if (parsed.storageMode !== 'firebase') {
+        parsed.storageMode = 'firebase';
         changed = true;
       }
       
@@ -106,6 +117,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return DEFAULT_SETTINGS;
   });
 
+  const [user, setUser] = useState<{ email: string } | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [weights, setWeights] = useState<WeightEntry[]>([]);
   const [foods, setFoods] = useState<FoodEntry[]>([]);
@@ -130,47 +142,30 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [settings.theme]);
 
-  // Load all data
+  // Load login state from localStorage on mount
+  useEffect(() => {
+    const loggedIn = localStorage.getItem('health_tracker_is_logged_in') === 'true';
+    if (loggedIn) {
+      setUser({ email: 'theshaguntyagi@gmail.com' });
+    }
+    
+    // Initialize Firebase for database sync
+    if (settings.firebaseConfig) {
+      initFirebase(settings.firebaseConfig);
+    }
+    setLoading(false);
+  }, [settings.firebaseConfig]);
+
+  // Load all data once user is authenticated
   useEffect(() => {
     const loadAllData = async () => {
+      // Wait until we have a logged-in user
+      if (!user) {
+        return;
+      }
+
       setLoading(true);
       try {
-        if (isFirebase && settings.firebaseConfig) {
-          const success = initFirebase(settings.firebaseConfig);
-          if (!success) {
-            console.warn("Firebase initialization failed, staying in local mode.");
-          }
-        }
-
-        // Initialize clean empty data if it's the first time
-        const hasInitialized = localStorage.getItem('has_initialized_data');
-        if (!hasInitialized && !isFirebase) {
-          const defaultProfile = {
-            name: 'User',
-            age: 30,
-            height: 175,
-            startWeight: 100,
-            targetWeight: 80,
-            dailyGoals: {
-              calories: 2000,
-              protein: 140,
-              water: 3000,
-              sleep: 8,
-              steps: 10000
-            }
-          };
-          localStorage.setItem('user_profile', JSON.stringify(defaultProfile));
-          localStorage.setItem('weight_entries', JSON.stringify([]));
-          localStorage.setItem('food_entries', JSON.stringify([]));
-          localStorage.setItem('water_entries', JSON.stringify([]));
-          localStorage.setItem('sleep_entries', JSON.stringify([]));
-          localStorage.setItem('activity_entries', JSON.stringify([]));
-          localStorage.setItem('health_records', JSON.stringify([]));
-          localStorage.setItem('ai_reports', JSON.stringify([]));
-          localStorage.setItem('chat_messages', JSON.stringify([]));
-          localStorage.setItem('has_initialized_data', 'true');
-        }
-
         const userProfile = await dbService.getUserProfile(isFirebase);
         const weightEntries = await dbService.getWeightEntries(isFirebase);
         const foodEntries = await dbService.getFoodEntries(isFirebase);
@@ -182,9 +177,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const chatMessages = await dbService.getChatMessages(isFirebase);
 
         setProfile(userProfile || {
-          name: 'User',
-          age: 30,
-          height: 175,
+          name: 'Shagun',
+          age: 23,
+          height: 180,
           startWeight: 100,
           targetWeight: 80,
           dailyGoals: {
@@ -211,7 +206,46 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     loadAllData();
-  }, [settings.storageMode, settings.firebaseConfig]);
+  }, [user, settings.storageMode, settings.firebaseConfig]);
+
+  // Dynamic Goal Calculation
+  const effectiveProfile = profile ? {
+    ...profile,
+    dailyGoals: calculateDailyGoals(
+      weights[0]?.weight || profile.startWeight || 100,
+      profile.height,
+      profile.age,
+      profile.targetWeight
+    )
+  } : null;
+
+  const signIn = async (email: string, pass: string) => {
+    setLoading(true);
+    if (email.toLowerCase() === 'theshaguntyagi@gmail.com' && pass === 'Shaguntyagi@2003') {
+      localStorage.setItem('health_tracker_is_logged_in', 'true');
+      setUser({ email: email.toLowerCase() });
+      setLoading(false);
+    } else {
+      setLoading(false);
+      throw new Error('Incorrect email or password. Please try again.');
+    }
+  };
+
+  const signOut = async () => {
+    setLoading(true);
+    localStorage.removeItem('health_tracker_is_logged_in');
+    setUser(null);
+    setProfile(null);
+    setWeights([]);
+    setFoods([]);
+    setWater([]);
+    setSleep([]);
+    setActivities([]);
+    setRecords([]);
+    setReports([]);
+    setMessages([]);
+    setLoading(false);
+  };
 
   // Save Settings
   const updateSettings = async (newSettings: Partial<AppSettings>) => {
@@ -337,7 +371,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       water,
       sleep,
       activities,
-      goals: profile?.dailyGoals || { calories: 2000, protein: 140, water: 3000, sleep: 8, steps: 10000 }
+      goals: effectiveProfile?.dailyGoals || { calories: 2000, protein: 140, water: 3000, sleep: 8, steps: 10000 }
     };
     
     const report = await aiService.generateReport(type, date, reportData, {
@@ -363,7 +397,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await dbService.saveChatMessage(userMessage, isFirebase);
 
     const history = [...messages, userMessage];
-    const logs = { profile, weights, foods, water, sleep, activities };
+    const logs = { profile: effectiveProfile, weights, foods, water, sleep, activities };
 
     const aiResponseContent = await aiService.getChatCoachResponse(content, history, logs, {
       aiMode: settings.aiMode,
@@ -410,7 +444,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const getDailyHealthScore = (date: string): number => {
     const totals = getDailyTotals(date);
-    const goals = profile?.dailyGoals || { calories: 2000, protein: 140, water: 3000, sleep: 8, steps: 10000 };
+    const goals = effectiveProfile?.dailyGoals || { calories: 2000, protein: 140, water: 3000, sleep: 8, steps: 10000 };
     
     // If absolutely nothing is logged for the day, score is 0
     const hasLogs = foods.some(f => f.date === date) || 
@@ -534,7 +568,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   return (
     <DataContext.Provider value={{
-      profile,
+      user,
+      profile: effectiveProfile,
       weights,
       foods,
       water,
@@ -547,6 +582,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       loading,
       activeTab,
       setActiveTab,
+      signIn,
+      signOut,
       updateProfile,
       addWeight,
       deleteWeight,

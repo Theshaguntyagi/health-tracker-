@@ -14,12 +14,13 @@ import { Settings } from './components/Settings';
 import { 
   LayoutDashboard, Scale, Apple, Droplet, Moon, 
   Dumbbell, Camera, Heart, Sparkles, MessageSquare, 
-  Settings as SettingsIcon, Menu, X, Flame, Sun, Moon as DarkIcon
+  Settings as SettingsIcon, Menu, X, Flame, Sun, Moon as DarkIcon, LogOut
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Login } from './components/Login';
 
 const Navigation: React.FC = () => {
-  const { activeTab, setActiveTab, getStreak, settings, updateSettings } = useData();
+  const { activeTab, setActiveTab, getStreak, settings, updateSettings, user, loading, signOut } = useData();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const streak = getStreak();
 
@@ -54,6 +55,21 @@ const Navigation: React.FC = () => {
       default: return <Dashboard />;
     }
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-mesh-light dark:bg-mesh-dark flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-10 h-10 border-4 border-brand-500 border-t-transparent rounded-full animate-spin" />
+          <span className="text-xs font-bold text-slate-455">Loading your profile...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Login />;
+  }
 
   const activeLabel = navItems.find(item => item.id === activeTab)?.label || 'Dashboard';
 
@@ -114,12 +130,22 @@ const Navigation: React.FC = () => {
             </div>
           </div>
 
-          <button
-            onClick={() => updateSettings({ theme: settings.theme === 'light' ? 'dark' : 'light' })}
-            className="p-2 bg-slate-100/80 dark:bg-slate-800/50 hover:bg-slate-200/60 dark:hover:bg-slate-700/60 border border-slate-200/40 dark:border-slate-700/30 text-slate-500 dark:text-slate-400 rounded-xl transition-all"
-          >
-            {settings.theme === 'light' ? <DarkIcon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => updateSettings({ theme: settings.theme === 'light' ? 'dark' : 'light' })}
+              className="p-2 bg-slate-100/80 dark:bg-slate-800/50 hover:bg-slate-200/60 dark:hover:bg-slate-700/60 border border-slate-200/40 dark:border-slate-700/30 text-slate-500 dark:text-slate-400 rounded-xl transition-all"
+              title="Toggle Theme"
+            >
+              {settings.theme === 'light' ? <DarkIcon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
+            </button>
+            <button
+              onClick={signOut}
+              className="p-2 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 text-rose-500 rounded-xl transition-all"
+              title="Sign Out"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       </aside>
 
