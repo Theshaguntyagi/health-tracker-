@@ -51,6 +51,7 @@ interface DataContextType {
   };
   getDailyHealthScore: (date: string) => number;
   getStreak: () => number;
+  resetAllData: () => Promise<void>;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -141,20 +142,33 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
         }
 
-        // Inject mock data if it's the first time
-        const hasMocked = localStorage.getItem('has_mocked_data');
-        if (!hasMocked && !isFirebase) {
-          const mock = getMockData();
-          localStorage.setItem('user_profile', JSON.stringify(mock.profile));
-          localStorage.setItem('weight_entries', JSON.stringify(mock.weights));
-          localStorage.setItem('food_entries', JSON.stringify(mock.foods));
-          localStorage.setItem('water_entries', JSON.stringify(mock.water));
-          localStorage.setItem('sleep_entries', JSON.stringify(mock.sleep));
-          localStorage.setItem('activity_entries', JSON.stringify(mock.activities));
-          localStorage.setItem('health_records', JSON.stringify(mock.records));
-          localStorage.setItem('ai_reports', JSON.stringify(mock.reports));
-          localStorage.setItem('chat_messages', JSON.stringify(mock.messages));
-          localStorage.setItem('has_mocked_data', 'true');
+        // Initialize clean empty data if it's the first time
+        const hasInitialized = localStorage.getItem('has_initialized_data');
+        if (!hasInitialized && !isFirebase) {
+          const defaultProfile = {
+            name: 'User',
+            age: 30,
+            height: 175,
+            startWeight: 100,
+            targetWeight: 80,
+            dailyGoals: {
+              calories: 2000,
+              protein: 140,
+              water: 3000,
+              sleep: 8,
+              steps: 10000
+            }
+          };
+          localStorage.setItem('user_profile', JSON.stringify(defaultProfile));
+          localStorage.setItem('weight_entries', JSON.stringify([]));
+          localStorage.setItem('food_entries', JSON.stringify([]));
+          localStorage.setItem('water_entries', JSON.stringify([]));
+          localStorage.setItem('sleep_entries', JSON.stringify([]));
+          localStorage.setItem('activity_entries', JSON.stringify([]));
+          localStorage.setItem('health_records', JSON.stringify([]));
+          localStorage.setItem('ai_reports', JSON.stringify([]));
+          localStorage.setItem('chat_messages', JSON.stringify([]));
+          localStorage.setItem('has_initialized_data', 'true');
         }
 
         const userProfile = await dbService.getUserProfile(isFirebase);
@@ -167,8 +181,20 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const aiReports = await dbService.getAIReports(isFirebase);
         const chatMessages = await dbService.getChatMessages(isFirebase);
 
-
-        setProfile(userProfile);
+        setProfile(userProfile || {
+          name: 'User',
+          age: 30,
+          height: 175,
+          startWeight: 100,
+          targetWeight: 80,
+          dailyGoals: {
+            calories: 2000,
+            protein: 140,
+            water: 3000,
+            sleep: 8,
+            steps: 10000
+          }
+        });
         setWeights(weightEntries);
         setFoods(foodEntries);
         setWater(waterEntries);
@@ -476,6 +502,36 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return streak;
   };
 
+  const resetAllData = async () => {
+    localStorage.clear();
+    // Keep current settings (so they don't have to re-configure Firebase or OpenAI keys!)
+    localStorage.setItem('app_settings', JSON.stringify(settings));
+    localStorage.setItem('has_initialized_data', 'true');
+    
+    setProfile({
+      name: 'User',
+      age: 30,
+      height: 175,
+      startWeight: 100,
+      targetWeight: 80,
+      dailyGoals: {
+        calories: 2000,
+        protein: 140,
+        water: 3000,
+        sleep: 8,
+        steps: 10000
+      }
+    });
+    setWeights([]);
+    setFoods([]);
+    setWater([]);
+    setSleep([]);
+    setActivities([]);
+    setRecords([]);
+    setReports([]);
+    setMessages([]);
+  };
+
   return (
     <DataContext.Provider value={{
       profile,
@@ -510,7 +566,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       updateSettings,
       getDailyTotals,
       getDailyHealthScore,
-      getStreak
+      getStreak,
+      resetAllData
     }}>
       {children}
     </DataContext.Provider>

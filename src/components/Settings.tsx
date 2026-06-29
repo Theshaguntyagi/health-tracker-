@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 
 export const Settings: React.FC = () => {
-  const { profile, updateProfile, settings, updateSettings } = useData();
+  const { profile, updateProfile, settings, updateSettings, resetAllData } = useData();
 
   // Profile Form States
   const [name, setName] = useState(profile?.name || '');
@@ -195,6 +195,26 @@ export const Settings: React.FC = () => {
                 {profileSaved ? 'Profile Saved!' : 'Save Profile & Goals'}
               </button>
             </form>
+          </div>
+
+          {/* Danger Zone */}
+          <div className="glass-card-3d p-6 border-rose-500/10 hover:border-rose-500/20 transition-all cursor-default">
+            <h2 className="text-lg font-semibold text-rose-500 mb-1.5">Danger Zone</h2>
+            <p className="text-xs text-slate-400 mb-4 leading-relaxed">
+              Wipe all weight history, food logs, hydration logs, sleep records, and chat messages from your local browser storage.
+            </p>
+            <button
+              type="button"
+              onClick={async () => {
+                if (confirm("Are you absolutely sure you want to delete all your tracked data? This cannot be undone.")) {
+                  await resetAllData();
+                  alert("All local data has been successfully reset!");
+                }
+              }}
+              className="btn-3d-danger w-full text-sm py-2.5"
+            >
+              Reset All Local Data
+            </button>
           </div>
 
         </div>
