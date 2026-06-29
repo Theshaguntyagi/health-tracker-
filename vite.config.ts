@@ -4,6 +4,7 @@ import { VitePWA } from 'vite-plugin-pwa'
 
 // https://vite.dev/config/
 export default defineConfig({
+  base: '/health-tracker-/',
   plugins: [
     react(),
     VitePWA({
@@ -17,7 +18,7 @@ export default defineConfig({
         background_color: '#030712', // slate-950
         display: 'standalone',
         orientation: 'portrait',
-        start_url: '/',
+        start_url: '/health-tracker-/',
         icons: [
           {
             src: 'pwa-192x192.png',
