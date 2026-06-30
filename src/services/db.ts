@@ -13,6 +13,7 @@ import {
 } from 'firebase/firestore';
 import { getStorage, ref, uploadString, getDownloadURL, deleteObject } from 'firebase/storage';
 import type { FirebaseStorage } from 'firebase/storage';
+import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
 import type { UserProfile, WeightEntry, FoodEntry, WaterEntry, SleepEntry, ActivityEntry, HealthRecord, AIReport, ChatMessage, FirebaseConfig } from '../types';
 
 // --- INDEXED DB FOR LOCAL PROGRESS PHOTOS ---
@@ -88,7 +89,25 @@ export function initFirebase(config: FirebaseConfig): boolean {
 }
 
 // --- DATA ACCESS LAYER ---
-export const USER_ID = 'shagun_tyagi'; // Hardcoded user ID for Shagun's personal data isolation
+export let USER_ID = 'shagun_tyagi'; // Fallback user ID
+
+// Listen to auth state changes to update USER_ID dynamically
+setTimeout(() => {
+  try {
+    const auth = getAuth();
+    onAuthStateChanged(auth, (user) => {
+      if (user) {
+        USER_ID = user.uid;
+        console.log("Firebase Auth User ID active:", USER_ID);
+      } else {
+        USER_ID = 'shagun_tyagi';
+        console.log("Guest User ID active:", USER_ID);
+      }
+    });
+  } catch (e) {
+    console.warn("Auth state listener not initialized yet.");
+  }
+}, 100);
 
 // Helper to get local data
 function getLocal<T>(key: string, defaultValue: T): T {
@@ -602,5 +621,38 @@ export const dbService = {
         await setDoc(docRef, photoDoc);
       }
     }
+  },
+
+  // 12. Authentication Methods
+  async signIn(email: string, pass: string): Promise<any> {
+    const authInstance = getAuth();
+    try {
+      return await signInWithEmailAndPassword(authInstance, email, pass);
+    } catch (err: any) {
+      console.warn("Sign in failed, attempting auto-signup:", err.code);
+      if (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') {
+        try {
+          const { createUserWithEmailAndPassword } = await import('firebase/auth');
+          const credential = await createUserWithEmailAndPassword(authInstance, email, pass);
+          console.log("Auto-signup successful for:", email);
+          return credential;
+        } catch (signUpErr: any) {
+          console.error("Auto-signup failed:", signUpErr);
+          if (signUpErr.code === 'auth/operation-not-allowed') {
+            throw new Error('Email/Password sign-in is disabled. Please enable "Email/Password" in your Firebase Console -> Authentication -> Sign-in method.');
+          }
+          throw signUpErr;
+        }
+      }
+      if (err.code === 'auth/operation-not-allowed') {
+        throw new Error('Email/Password sign-in is disabled. Please enable "Email/Password" in your Firebase Console -> Authentication -> Sign-in method.');
+      }
+      throw err;
+    }
+  },
+
+  async signOut(): Promise<void> {
+    const authInstance = getAuth();
+    return signOut(authInstance);
   }
 };

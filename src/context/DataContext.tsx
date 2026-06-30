@@ -2,6 +2,8 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { dbService, initFirebase } from '../services/db';
 import { aiService } from '../services/ai';
 import { calculateDailyGoals } from '../utils/fitness';
+import { getAuth, onAuthStateChanged } from 'firebase/auth';
+import type { User } from 'firebase/auth';
 
 import type { 
   UserProfile, WeightEntry, FoodEntry, WaterEntry, SleepEntry, 
@@ -9,7 +11,7 @@ import type {
 } from '../types';
 
 interface DataContextType {
-  user: { email: string } | null;
+  user: User | null;
   profile: UserProfile | null;
   weights: WeightEntry[];
   foods: FoodEntry[];
@@ -117,7 +119,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return DEFAULT_SETTINGS;
   });
 
-  const [user, setUser] = useState<{ email: string } | null>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [weights, setWeights] = useState<WeightEntry[]>([]);
   const [foods, setFoods] = useState<FoodEntry[]>([]);
@@ -142,25 +144,29 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [settings.theme]);
 
-  // Load login state from localStorage on mount
+  // Listen to Auth State
   useEffect(() => {
-    const loggedIn = localStorage.getItem('health_tracker_is_logged_in') === 'true';
-    if (loggedIn) {
-      setUser({ email: 'theshaguntyagi@gmail.com' });
-    }
-    
-    // Initialize Firebase for database sync
-    if (settings.firebaseConfig) {
-      initFirebase(settings.firebaseConfig);
+    if (isFirebase && settings.firebaseConfig) {
+      const success = initFirebase(settings.firebaseConfig);
+      if (success) {
+        const authInstance = getAuth();
+        const unsubscribe = onAuthStateChanged(authInstance, (firebaseUser) => {
+          setUser(firebaseUser);
+          if (!firebaseUser) {
+            setLoading(false);
+          }
+        });
+        return () => unsubscribe();
+      }
     }
     setLoading(false);
-  }, [settings.firebaseConfig]);
+  }, [isFirebase, settings.firebaseConfig]);
 
   // Load all data once user is authenticated
   useEffect(() => {
     const loadAllData = async () => {
-      // Wait until we have a logged-in user
-      if (!user) {
+      // If we are in Firebase mode, wait until we have a logged-in user
+      if (isFirebase && !user) {
         return;
       }
 
@@ -221,30 +227,33 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signIn = async (email: string, pass: string) => {
     setLoading(true);
-    if (email.toLowerCase() === 'theshaguntyagi@gmail.com' && pass === 'Shaguntyagi@2003') {
-      localStorage.setItem('health_tracker_is_logged_in', 'true');
-      setUser({ email: email.toLowerCase() });
+    try {
+      await dbService.signIn(email, pass);
+    } catch (err) {
       setLoading(false);
-    } else {
-      setLoading(false);
-      throw new Error('Incorrect email or password. Please try again.');
+      throw err;
     }
   };
 
   const signOut = async () => {
     setLoading(true);
-    localStorage.removeItem('health_tracker_is_logged_in');
-    setUser(null);
-    setProfile(null);
-    setWeights([]);
-    setFoods([]);
-    setWater([]);
-    setSleep([]);
-    setActivities([]);
-    setRecords([]);
-    setReports([]);
-    setMessages([]);
-    setLoading(false);
+    try {
+      await dbService.signOut();
+      setUser(null);
+      setProfile(null);
+      setWeights([]);
+      setFoods([]);
+      setWater([]);
+      setSleep([]);
+      setActivities([]);
+      setRecords([]);
+      setReports([]);
+      setMessages([]);
+    } catch (err) {
+      console.error("Failed to sign out:", err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Save Settings
