@@ -2,12 +2,13 @@ import React, { useState } from 'react';
 import { useData } from '../context/DataContext';
 import { 
   Flame, Award, Scale, Flame as Burner, Droplet, 
-  Moon, Footprints, Plus, ChevronDown, ChevronUp, Check, Info
+  Moon, Footprints, Plus, ChevronDown, ChevronUp, Check, Info, TrendingUp
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 
 export const Dashboard: React.FC = () => {
-  const { profile, getDailyTotals, getDailyHealthScore, getStreak, addWater, addActivity, addWeight, weights, setActiveTab } = useData();
+  const { profile, getDailyTotals, getDailyHealthScore, getStreak, addWater, addActivity, addWeight, weights, setActiveTab, foods, water, activities } = useData();
   const [showScoreBreakdown, setShowScoreBreakdown] = useState(false);
   
   // State for quick logging
@@ -15,6 +16,10 @@ export const Dashboard: React.FC = () => {
   const [quickSteps, setQuickSteps] = useState('');
   const [showWeightSuccess, setShowWeightSuccess] = useState(false);
   const [showStepsSuccess, setShowStepsSuccess] = useState(false);
+
+  // State for historical chart
+  const [chartTimeframe, setChartTimeframe] = useState<7 | 30>(7);
+  const [chartMetric, setChartMetric] = useState<'calories' | 'water' | 'steps' | 'weight'>('calories');
 
   const today = new Date().toISOString().split('T')[0];
   const totals = getDailyTotals(today);
@@ -441,7 +446,175 @@ export const Dashboard: React.FC = () => {
 
       </div>
 
-      {/* 4. Quick Logging Section */}
+      {/* 4. Historical Trends Chart */}
+      <div className="glass-card-3d p-6 cursor-default">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+          <div>
+            <h2 className="text-lg font-extrabold text-slate-100 flex items-center gap-2">
+              <TrendingUp className="w-5 h-5 text-brand-450" /> Analytics & Trends
+            </h2>
+            <p className="text-xs text-slate-400 mt-0.5">Track your progress and habits over time.</p>
+          </div>
+          
+          {/* Controls */}
+          <div className="flex flex-wrap items-center gap-2.5">
+            {/* Metric Selector */}
+            <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800/40">
+              {(['calories', 'water', 'steps', 'weight'] as const).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => setChartMetric(m)}
+                  className={`text-[11px] font-black capitalize px-3 py-1.5 rounded-lg transition-all ${
+                    chartMetric === m 
+                      ? 'bg-slate-800 text-slate-100 shadow-sm' 
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  {m === 'calories' ? 'Calories' : m === 'water' ? 'Water' : m === 'steps' ? 'Steps' : 'Weight'}
+                </button>
+              ))}
+            </div>
+
+            {/* Timeframe Selector */}
+            <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800/40">
+              {([7, 30] as const).map((t) => (
+                <button
+                  key={t}
+                  onClick={() => setChartTimeframe(t)}
+                  className={`text-[11px] font-black px-3 py-1.5 rounded-lg transition-all ${
+                    chartTimeframe === t 
+                      ? 'bg-brand-600 text-white shadow-sm' 
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  {t === 7 ? 'Week' : 'Month'}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Chart Area */}
+        <div className="h-72 w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={(() => {
+              const dataList = [];
+              const todayDate = new Date();
+              
+              for (let i = chartTimeframe - 1; i >= 0; i--) {
+                const targetDate = new Date();
+                targetDate.setDate(todayDate.getDate() - i);
+                const dateStr = targetDate.toISOString().split('T')[0];
+                const displayDate = targetDate.toLocaleDateString('default', { day: 'numeric', month: 'short' });
+                
+                const dayFoods = foods.filter(f => f.date === dateStr);
+                const dayWater = water.filter(w => w.date === dateStr);
+                const dayActivities = activities.filter(a => a.date === dateStr);
+                const dayWeights = weights.filter(w => w.date === dateStr);
+                
+                const caloriesVal = dayFoods.reduce((sum, f) => sum + f.calories, 0);
+                const waterVal = dayWater.reduce((sum, w) => sum + w.amount, 0) / 1000;
+                const stepsVal = dayActivities.reduce((sum, a) => sum + (a.steps || 0), 0);
+                
+                let weightVal = 0;
+                if (dayWeights.length > 0) {
+                  weightVal = dayWeights[0].weight;
+                } else {
+                  const precedingWeights = weights
+                    .filter(w => w.date <= dateStr)
+                    .sort((a, b) => b.date.localeCompare(a.date));
+                  weightVal = precedingWeights.length > 0 ? precedingWeights[0].weight : (profile?.startWeight || 100);
+                }
+                
+                dataList.push({
+                  date: displayDate,
+                  calories: caloriesVal,
+                  water: Math.round(waterVal * 10) / 10,
+                  steps: stepsVal,
+                  weight: weightVal
+                });
+              }
+              return dataList;
+            })()} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+              <defs>
+                <linearGradient id="colorMetric" x1="0" y1="0" x2="0" y2="1">
+                  <stop 
+                    offset="5%" 
+                    stopColor={
+                      chartMetric === 'calories' ? '#10b981' : 
+                      chartMetric === 'water' ? '#0ea5e9' : 
+                      chartMetric === 'steps' ? '#f59e0b' : '#6366f1'
+                    } 
+                    stopOpacity={0.15} 
+                  />
+                  <stop 
+                    offset="95%" 
+                    stopColor={
+                      chartMetric === 'calories' ? '#10b981' : 
+                      chartMetric === 'water' ? '#0ea5e9' : 
+                      chartMetric === 'steps' ? '#f59e0b' : '#6366f1'
+                    } 
+                    stopOpacity={0} 
+                  />
+                </linearGradient>
+              </defs>
+              <CartesianGrid stroke="#111827" strokeDasharray="3 3" vertical={false} />
+              <XAxis 
+                dataKey="date" 
+                stroke="#4b5563" 
+                fontSize={10} 
+                fontWeight={700}
+                dy={10}
+                tickLine={false} 
+              />
+              <YAxis 
+                stroke="#4b5563" 
+                fontSize={10} 
+                fontWeight={700}
+                dx={-5}
+                tickLine={false} 
+                axisLine={false}
+              />
+              <Tooltip content={({ active, payload, label }: any) => {
+                if (active && payload && payload.length) {
+                  const value = payload[0].value;
+                  let unit = '';
+                  let color = '';
+                  
+                  if (chartMetric === 'calories') { unit = ' kcal'; color = 'text-emerald-450'; }
+                  else if (chartMetric === 'water') { unit = ' L'; color = 'text-sky-450'; }
+                  else if (chartMetric === 'steps') { unit = ' steps'; color = 'text-amber-500'; }
+                  else if (chartMetric === 'weight') { unit = ' kg'; color = 'text-indigo-450'; }
+
+                  return (
+                    <div className="bg-slate-950/95 border border-slate-800/60 p-3 rounded-2xl shadow-2xl backdrop-blur-md">
+                      <p className="text-[10px] font-bold text-slate-500 uppercase">{label}</p>
+                      <p className={`text-sm font-black mt-1 ${color}`}>
+                        {value.toLocaleString()}{unit}
+                      </p>
+                    </div>
+                  );
+                }
+                return null;
+              }} />
+              <Area 
+                type="monotone" 
+                dataKey={chartMetric} 
+                stroke={
+                  chartMetric === 'calories' ? '#10b981' : 
+                  chartMetric === 'water' ? '#0ea5e9' : 
+                  chartMetric === 'steps' ? '#f59e0b' : '#6366f1'
+                } 
+                strokeWidth={3} 
+                fillOpacity={1} 
+                fill="url(#colorMetric)" 
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* 5. Quick Logging Section */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         
         {/* Quick Weight Log */}
